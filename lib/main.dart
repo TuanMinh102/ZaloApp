@@ -266,7 +266,7 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // Hien thi mat khau
+  //Hien thi mat khau
   void showHide() {
     setState(() {
       _showPass = !_showPass;

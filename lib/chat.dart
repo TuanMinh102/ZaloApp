@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:zalo/expandIMG.dart';
 
 class Chat extends StatefulWidget {
   final String myselft;
@@ -17,6 +21,7 @@ class _ChatState extends State<Chat> {
   int countMess = 0;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  late File _image;
 
   fetchDatabaseList() async {
     final result2 =
@@ -47,11 +52,39 @@ class _ChatState extends State<Chat> {
     });
   }
 
+  Future<void> _getImage() async {
+    final imagePicker = ImagePicker();
+    final pickedFile = await imagePicker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _image = File(pickedFile.path);
+      });
+      _uploadImage();
+    }
+  }
+
+  Future<void> _uploadImage() async {
+    try {
+      // Đặt tên cho ảnh trong Firebase Storage
+      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
+      firebase_storage.Reference ref = firebase_storage.FirebaseStorage.instance
+          .ref()
+          .child('$fileName.jpg');
+      // Upload ảnh lên Firebase Storage
+      await ref.putFile(_image);
+      // Lấy URL của ảnh sau khi upload
+      String downloadURL = await ref.getDownloadURL();
+      addImgMessage(downloadURL);
+    } catch (e) {}
+  }
+
   @override
   void initState() {
     super.initState();
     fetchDatabaseList();
     getdocumentid();
+    _image = File('');
   }
 
   @override
@@ -182,16 +215,19 @@ class _ChatState extends State<Chat> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                              yourData[widget.myselft +
+                                            if (yourData[widget.myselft +
+                                                    ('-') +
+                                                    (index + 1).toString()] !=
+                                                null)
+                                              showMessage(yourData[
+                                                  widget.myselft +
                                                       ('-') +
-                                                      (index + 1).toString()] ??
-                                                  yourData[widget.target +
+                                                      (index + 1).toString()])
+                                            else
+                                              showMessage(yourData[
+                                                  widget.target +
                                                       ('-') +
-                                                      (index + 1).toString()],
-                                              style: const TextStyle(
-                                                  color: Colors.black),
-                                            ),
+                                                      (index + 1).toString()]),
                                             const Padding(
                                                 padding:
                                                     EdgeInsets.only(top: 3)),
@@ -258,7 +294,7 @@ class _ChatState extends State<Chat> {
                   Padding(
                     padding: const EdgeInsets.only(right: 10),
                     child: IconButton(
-                      onPressed: () => {},
+                      onPressed: _getImage,
                       icon: const Icon(Icons.image, size: 30),
                     ),
                   ),
@@ -309,6 +345,42 @@ class _ChatState extends State<Chat> {
     }
   }
 
+//luu link anh len csdl
+  void addImgMessage(String link) async {
+    if (docid == 'null') {
+      //khoi tao tin nhan dau tien
+      Map<String, String> datatosave = {
+        'user1': widget.myselft,
+        'user2': widget.target,
+        widget.myselft + ('-1'): link,
+        'count_messages': '1',
+        'last_message': link
+      };
+      FirebaseFirestore.instance.collection('single_chat').add(datatosave);
+      //cap nhap lai docid
+      getdocumentid();
+    } else {
+      // them tin nhan moi vao document da co
+      CollectionReference collectionReference =
+          FirebaseFirestore.instance.collection('single_chat');
+      DocumentReference documentReference = collectionReference.doc(docid);
+      await documentReference.update({
+        widget.myselft + ('-') + (countMess + 1).toString(): link,
+        'count_messages': (countMess + 1).toString(),
+        'last_message': link
+      });
+    }
+    setState(() {
+      inputText = false;
+      _messageController.text = '';
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
   // Lay ten cua doi phuong
   String getName() {
     for (int i = 0; i < userList.length; i++) {
@@ -317,5 +389,37 @@ class _ChatState extends State<Chat> {
       }
     }
     return 'Username';
+  }
+
+// kiem tra tin nhan co phai la link anh ko
+  bool isImageUrl(String url) {
+    String mainString = url;
+    String searchString = "https://firebasestorage";
+    if (mainString.contains(searchString)) {
+      return true;
+    }
+    return false;
+  }
+
+  // hiện văn bản hoặc ảnh
+  Widget showMessage(String mess) {
+    if (isImageUrl(mess)) {
+      return GestureDetector(
+        onTap: () => {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ExpandIMG(img: mess),
+            ),
+          ),
+        },
+        child: Image.network(mess, width: 100, height: 150),
+      );
+    } else {
+      return Text(
+        mess,
+        style: const TextStyle(color: Colors.black),
+      );
+    }
   }
 }
