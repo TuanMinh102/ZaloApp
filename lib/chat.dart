@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart' as firebase_storage;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:zalo/expandIMG.dart';
+import 'package:zalo/expandVideo.dart';
 
 class Chat extends StatefulWidget {
   final String myselft;
@@ -21,7 +22,7 @@ class _ChatState extends State<Chat> {
   int countMess = 0;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  late File _image;
+  late File _file;
 
   fetchDatabaseList() async {
     final result2 =
@@ -52,30 +53,58 @@ class _ChatState extends State<Chat> {
     });
   }
 
+// chon anh tu thiet bi
   Future<void> _getImage() async {
     final imagePicker = ImagePicker();
-    final pickedFile = await imagePicker.pickImage(source: ImageSource.gallery);
+    final imgFile = await imagePicker.pickImage(source: ImageSource.gallery);
 
-    if (pickedFile != null) {
+    if (imgFile != null) {
       setState(() {
-        _image = File(pickedFile.path);
+        _file = File(imgFile.path);
       });
-      _uploadImage();
+      _uploadFile('img');
     }
   }
 
-  Future<void> _uploadImage() async {
+// chon video tu thiet bi
+  Future<void> _getVideo() async {
+    final imagePicker = ImagePicker();
+    final videoFile = await imagePicker.pickVideo(source: ImageSource.gallery);
+
+    if (videoFile != null) {
+      setState(() {
+        _file = File(videoFile.path);
+      });
+      _uploadFile('video');
+    }
+  }
+
+// tai file len firebase
+  Future<void> _uploadFile(String type) async {
     try {
-      // Đặt tên cho ảnh trong Firebase Storage
+      // Đặt tên cho file trong Firebase Storage
       String fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      firebase_storage.Reference ref = firebase_storage.FirebaseStorage.instance
-          .ref()
-          .child('$fileName.jpg');
-      // Upload ảnh lên Firebase Storage
-      await ref.putFile(_image);
-      // Lấy URL của ảnh sau khi upload
-      String downloadURL = await ref.getDownloadURL();
-      addImgMessage(downloadURL);
+      if (type == 'img') {
+        firebase_storage.Reference ref = firebase_storage
+            .FirebaseStorage.instance
+            .ref()
+            .child('$fileName.jpg');
+        // Upload ảnh lên Firebase Storage
+        await ref.putFile(_file);
+        // Lấy URL của ảnh sau khi upload
+        String downloadURL = await ref.getDownloadURL();
+        addFileMessage(downloadURL);
+      } else {
+        firebase_storage.Reference ref = firebase_storage
+            .FirebaseStorage.instance
+            .ref()
+            .child('$fileName.mp4');
+        // Upload video lên Firebase Storage
+        await ref.putFile(_file);
+        // Lấy URL của video sau khi upload
+        String downloadURL = await ref.getDownloadURL();
+        addFileMessage(downloadURL);
+      }
     } catch (e) {}
   }
 
@@ -84,7 +113,7 @@ class _ChatState extends State<Chat> {
     super.initState();
     fetchDatabaseList();
     getdocumentid();
-    _image = File('');
+    _file = File('');
   }
 
   @override
@@ -288,14 +317,21 @@ class _ChatState extends State<Chat> {
                     child: Icon(Icons.more_horiz, size: 30),
                   ),
                   const Padding(
-                    padding: EdgeInsets.only(right: 10),
+                    padding: EdgeInsets.only(right: 5),
                     child: Icon(Icons.mic, size: 30),
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(right: 10),
+                    padding: const EdgeInsets.only(right: 5),
                     child: IconButton(
                       onPressed: _getImage,
                       icon: const Icon(Icons.image, size: 30),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 5),
+                    child: IconButton(
+                      onPressed: _getVideo,
+                      icon: const Icon(Icons.video_collection, size: 30),
                     ),
                   ),
                 ]),
@@ -346,7 +382,7 @@ class _ChatState extends State<Chat> {
   }
 
 //luu link anh len csdl
-  void addImgMessage(String link) async {
+  void addFileMessage(String link) async {
     if (docid == 'null') {
       //khoi tao tin nhan dau tien
       Map<String, String> datatosave = {
@@ -381,7 +417,7 @@ class _ChatState extends State<Chat> {
     });
   }
 
-  // Lay ten cua doi phuong
+// Lay ten cua doi phuong
   String getName() {
     for (int i = 0; i < userList.length; i++) {
       if (userList[i]['phone'] == widget.target) {
@@ -395,13 +431,25 @@ class _ChatState extends State<Chat> {
   bool isImageUrl(String url) {
     String mainString = url;
     String searchString = "https://firebasestorage";
-    if (mainString.contains(searchString)) {
+    String type = ".jpg";
+    if (mainString.contains(searchString) && mainString.contains(type)) {
       return true;
     }
     return false;
   }
 
-  // hiện văn bản hoặc ảnh
+// kiem tra tin nhan co phai la video ko
+  bool isVideoUrl(String url) {
+    String mainString = url;
+    String searchString = "https://firebasestorage";
+    String type = ".mp4";
+    if (mainString.contains(searchString) && mainString.contains(type)) {
+      return true;
+    }
+    return false;
+  }
+
+// hiện văn bản hoặc ảnh hoac video
   Widget showMessage(String mess) {
     if (isImageUrl(mess)) {
       return GestureDetector(
@@ -409,11 +457,42 @@ class _ChatState extends State<Chat> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ExpandIMG(img: mess),
+              builder: (context) => ExpandIMG(imgLink: mess),
             ),
           ),
         },
         child: Image.network(mess, width: 100, height: 150),
+      );
+    } else if (isVideoUrl(mess)) {
+      return GestureDetector(
+        onTap: () => {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => VideoApp(videoLink: mess),
+            ),
+          )
+        },
+        child: Stack(alignment: AlignmentDirectional.center, children: [
+          Image.asset('images/video.png', width: 100, height: 150),
+          SizedBox(
+            width: 30,
+            height: 30,
+            child: FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VideoApp(videoLink: mess),
+                  ),
+                );
+              },
+              child: const Icon(
+                Icons.play_arrow,
+              ),
+            ),
+          ),
+        ]),
       );
     } else {
       return Text(
